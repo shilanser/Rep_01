@@ -1,0 +1,89 @@
+with t as (select 
+     	p.product_id,
+     	p.product_name,
+     	s.outcome_price_one_w_nds,
+     	TRUNC(s.product_count_sale, 0) as Ostatok,
+     	sp.sick_id,
+     	decode(p.product_tree_attr_id,15,1,0) as USTM,
+     	decode(p.product_tree_attr_id,22,1,0) as STM,
+     	0 as SUPER,
+     	s.OUTCOME_PRICE_ONE_w_NDS - s.income_price_w_nds as nac,
+     	ven.vendor_id,
+     	ven.vendor_name,
+     	cont.country_name,
+     	NVL(tsred.sredCena, 0) as sredCena,
+     	NVL(p.PRODUCT_TREE_ATTR_NAME,'-'),
+     	NVL(tsale.sale30, 0) as sale30,
+     	decode(p.product_type_id,396070,1,0) as bad,
+     	s.remote_partner_id ,
+     	s.income_price_w_nds 
+     	from
+     	organiz.t_sick_product_link sp,
+     	organiz.v_product p,
+     	organiz.v_remote_sklad_state s,
+     	organiz.t_vendor ven,
+     	organiz.t_country cont,
+     	(select
+     		ro.PRODUCT_ID,
+      	   sum(ro.outcome_count) as sale30
+      	from
+      		organiz.t_remote_roznica_outcome ro,
+      		organiz.t_remote_roznica_outcome_head roh
+      	where
+      		roh.Remote_roznica_outcome_Head_id = ro.Remote_roznica_outcome_Head_id
+      		and ro.REMOTE_PARTNER_ID = roh.remote_partner_id
+      		and ((roh.operation_id=506) or (roh.operation_id=545))
+      		and roh.outcome_date_sale>=sysdate-30
+      		GROUP BY ro.PRODUCT_ID
+      	) tsale,
+     	(select
+     		product_id,
+     	   round(summa/kolvo,2) as sredCena
+     	   from
+      	     (select
+       	       product_id,
+      	        sum(summa) as summa,
+      	        sum(Ostatok) as kolvo 
+       	     from
+       	       (select
+       	         s.product_id,
+       	         s.INCOME_PRICE_W_NDS*TRUNC(s.product_count_sale, 0) as summa,
+      	          TRUNC(s.product_count_sale, 0) as Ostatok 
+      	         from
+      	           organiz.v_remote_sklad_state s
+       	       where
+      	          TRUNC(s.product_count_sale, 0)>0
+      	 )
+      	group by
+      	product_id
+      	)   
+      	 ) tsred
+     	where s.product_id = p.product_id and p.product_id = sp.product_id
+     	and  s.product_id = tsale.product_id (+)
+     	and  s.product_id = tsred.product_id (+)
+     	and ven.vendor_id = p.vendor_id and cont.country_id = p.country_id
+     	and s.remote_partner_id in (1950,341,342,1685,1524,1523,303,1869,1823,1222,349,347,1585,1863,2025,2026,2023,2024,318,310,302,2083,2064,2066,2144,2065)
+     	and s.product_count_sale>=1
+     	and s.outcome_price_one_w_nds>0
+        and s.product_id = 91814)
+		
+     	select t.*,
+      	nvl(trunc(round(t.income_price_w_nds*(1+ptal.value_number/100)-0.04,1)),0)  as NulNacenka
+       	from t,
+     	     (select ptal.product_id, pll.partner_id  ,                 
+     	        max(ptal.value_number) as  value_number              
+     	   from organiz.t_product_tree_attr pta,
+      	       organiz.t_product_tree_attr_link ptal,
+      	       organiz.t_partner_list_link pll                                                                              
+     	  where 
+     	     ptal.product_tree_attr_id = pta.product_tree_attr_id
+    	     and ptal.price_schema_id = 285864
+   		     and pta.product_tree_attr_id = 2647
+     		   -- and pll.partner_id = organiz.pk_system.getmypartnerid                                                                    
+     	    and ptal.price_schema_id = pll.partner_list_id                                                                                   
+     	    and nvl(ptal.value_number,0)>0
+     	    group by ptal.product_id ,pll.partner_id                                
+     	) ptal
+      	where (ptal.product_id(+)= t.product_id  and  ptal.partner_id(+) = t.remote_partner_id)
+        --and t.product_id = 91814
+     	   --and t.product_id not in (40004538,154781)
